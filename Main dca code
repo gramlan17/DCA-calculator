@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>DCA Allocator</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card-bg: #ffffff;
+    --text: #37352f;
+    --text-light: #70706e;
+    --border: #e9e9e7;
+    --accent: #2383e2;
+    --accent-bg: #e8f0fe;
+    --danger: #eb5757;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f0f;
+      --card-bg: #1e1e1e;
+      --text: rgba(255, 255, 255, 0.9);
+      --text-light: rgba(255, 255, 255, 0.5);
+      --border: #2f2f2f;
+      --accent: #2eaadc;
+      --accent-bg: #153c4d;
+    }
+  }
+  body {
+    font-family: var(--font);
+    background-color: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 500px; margin: 0 auto; padding-bottom: 40px; }
+  h2, h3 { margin-top: 0; margin-bottom: 12px; }
+  
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  
+  .note {
+    font-size: 13px;
+    color: var(--text-light);
+    background: var(--bg);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    text-align: center;
+    border: 1px dashed var(--border);
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: start;}
+  
+  .input-group { display: flex; flex-direction: column; margin-bottom: 12px; }
+  .input-group:last-child { margin-bottom: 0; }
+  label { font-size: 12px; margin-bottom: 6px; font-weight: 500; color: var(--text-light); text-align: center; }
+  
+  /* Tap Box Styling */
+  input.tap-box {
+    padding: 14px 8px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    background: var(--accent-bg);
+    color: var(--accent);
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  input.tap-box:focus {
+    border-color: var(--accent);
+    background: var(--card-bg);
+  }
+  
+  input.tap-box-macro {
+    font-size: 22px;
+    padding: 16px 12px;
+  }
+  
+  /* Standard input for text and selects */
+  .text-input {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 15px; background: transparent; color: var(--text); width: 100%;
+    box-sizing: border-box; outline: none; text-align: left; appearance: auto;
+  }
+  .text-input:focus { border-color: var(--accent); }
+
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 12px 16px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  
+  /* Asset Item Styles */
+  .asset-item { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; }
+  .asset-item:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+  .asset-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .asset-title { font-weight: 600; font-size: 18px; }
+  .asset-subtitle { font-size: 12px; color: var(--text-light); margin-bottom: 8px; }
+  .delete-btn { color: var(--danger); font-size: 12px; cursor: pointer; padding: 6px 10px; border: 1px solid transparent; background: rgba(235, 87, 87, 0.1); border-radius: 6px; font-weight: 600;}
+  
+  .type-toggle-container { margin-bottom: 14px; }
+  .type-select { width: 100%; padding: 6px 8px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); outline: none; }
+  
+  .adjusted-output { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+  .adjusted-output label { color: var(--text-light); }
+  .adjusted-badge { background: var(--bg); border: 1px solid var(--border); padding: 12px 4px; border-radius: 8px; font-weight: 700; font-size: 16px; text-align: center; width: 100%; box-sizing: border-box; color: var(--text); }
+  .adjusted-dol { font-size: 16px; font-weight: 700; color: var(--accent); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  
+  <div class="card">
+    <h3>Investment Settings</h3>
+    <div class="note">
+      Historical S&P 500 CAPE baseline locked at <strong>31</strong>.
+    </div>
+    <div class="grid-2">
+      <div class="input-group">
+        <label>Monthly Contrib. ($)</label>
+        <input type="number" class="tap-box tap-box-macro" id="monthlyDca" value="1000" inputmode="decimal" oninput="saveAndCalculate()">
+      </div>
+      <div class="input-group">
+        <label>Current Mkt CAPE</label>
+        <input type="number" class="tap-box tap-box-macro" id="currCape" value="39" inputmode="decimal" oninput="saveAndCalculate()">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>My Assets</h3>
+    <div id="assetList">
+      </div>
+    <p id="emptyState" style="font-size: 14px; color: var(--text-light); text-align: center;">No assets added yet.</p>
+  </div>
+
+  <div class="card">
+    <h3>Add Asset</h3>
+    <div class="input-group">
+      <label style="text-align: left;">Asset Name</label>
+      <input type="text" class="text-input" id="newName" placeholder="e.g. S&P 500, Gold, BTC">
+    </div>
+    <div class="input-group">
+      <label style="text-align: left;">Market Behavior</label>
+      <select id="newType" class="text-input">
+        <option value="standard">Standard (Reduce when CAPE is high)</option>
+        <option value="inverse">Safe Haven / Inverse (Increase when CAPE is high)</option>
+      </select>
+    </div>
+    <div class="grid-2">
+      <div class="input-group">
+        <label style="text-align: left;">Target Base %</label>
+        <input type="number" class="text-input" id="newBase" placeholder="e.g. 20" inputmode="decimal">
+      </div>
+      <div class="input-group">
+        <label style="text-align: left;">10-Yr P/E</label>
+        <input type="number" class="text-input" id="newMedPe" placeholder="e.g. 15" inputmode="decimal">
+      </div>
+      <div class="input-group">
+        <label style="text-align: left;">Euphoria %</label>
+        <input type="number" class="text-input" id="newEuphoria" placeholder="e.g. 5" inputmode="decimal">
+      </div>
+      <div class="input-group">
+        <label style="text-align: left;">Pessimism %</label>
+        <input type="number" class="text-input" id="newPessimism" placeholder="e.g. 35" inputmode="decimal">
+      </div>
+    </div>
+    <button style="margin-top: 12px;" onclick="addAsset()">+ Add Asset</button>
+  </div>
+</div>
+
+<script>
+  const HIST_CAPE = 31;
+  // V9 Storage key for toggle logic
+  let portfolio = JSON.parse(localStorage.getItem('dca_portfolio_v9')) || [];
+  
+  function init() {
+    const savedCurrCape = localStorage.getItem('dca_currCape_v9');
+    const savedMonthlyDca = localStorage.getItem('dca_monthly_v9');
+    
+    if(savedCurrCape) document.getElementById('currCape').value = savedCurrCape;
+    if(savedMonthlyDca) document.getElementById('monthlyDca').value = savedMonthlyDca;
+    
+    renderAssets();
+  }
+
+  function saveAndCalculate() {
+    const currCape = parseFloat(document.getElementById('currCape').value) || HIST_CAPE;
+    const monthlyDca = parseFloat(document.getElementById('monthlyDca').value) || 0;
+    
+    localStorage.setItem('dca_currCape_v9', currCape);
+    localStorage.setItem('dca_monthly_v9', monthlyDca);
+    localStorage.setItem('dca_portfolio_v9', JSON.stringify(portfolio));
+
+    portfolio.forEach((asset, index) => {
+      // 1. Determine Macro Multiplier based on toggle
+      let macroMult;
+      if (asset.type === 'inverse') {
+        macroMult = currCape / HIST_CAPE; // Increases allocation when market is overvalued
+      } else {
+        macroMult = HIST_CAPE / currCape; // Reduces allocation when market is overvalued
+      }
+
+      // 2. Micro Multiplier
+      let medPe = parseFloat(asset.medPe) || 1;
+      let currPe = parseFloat(asset.currentVal);
+      if (isNaN(currPe) || currPe <= 0) currPe = medPe; 
+      const microMult = medPe / currPe;
+      
+      // 3. Raw Allocation
+      let rawAdjusted = asset.base * macroMult * microMult;
+      
+      // 4. Clamping
+      let euphLimit = parseFloat(asset.euphoria) || 0;
+      let pessLimit = parseFloat(asset.pessimism) || 0;
+      let lowerBound = Math.min(euphLimit, pessLimit);
+      let upperBound = Math.max(euphLimit, pessLimit);
+      
+      let clampedAdjusted = Math.min(Math.max(rawAdjusted, lowerBound), upperBound);
+      
+      // 5. Dollar Calculation
+      let assetDol = (clampedAdjusted / 100) * monthlyDca;
+      
+      const badge = document.getElementById(`adj_${index}`);
+      const dolBadge = document.getElementById(`adj_dol_${index}`);
+      
+      if(badge) badge.innerText = clampedAdjusted.toFixed(1) + '%';
+      if(dolBadge) dolBadge.innerText = '$' + assetDol.toFixed(2);
+    });
+  }
+
+  function updateType(index, newValue) {
+    portfolio[index].type = newValue;
+    saveAndCalculate();
+  }
+
+  function renderAssets() {
+    const list = document.getElementById('assetList');
+    const emptyState = document.getElementById('emptyState');
+    list.innerHTML = '';
+    
+    if (portfolio.length === 0) {
+      emptyState.style.display = 'block';
+    } else {
+      emptyState.style.display = 'none';
+      portfolio.forEach((asset, index) => {
+        
+        let isInverse = asset.type === 'inverse';
+        
+        list.innerHTML += `
+          <div class="asset-item">
+            <div class="asset-header">
+              <span class="asset-title">${asset.name}</span>
+              <button class="delete-btn" onclick="removeAsset(${index})">Remove</button>
+            </div>
+            <div class="asset-subtitle">
+              Target: ${asset.base}% | Euphoria: ${asset.euphoria}% | Pessimism: ${asset.pessimism}%
+            </div>
+            <div class="type-toggle-container">
+              <select class="type-select" onchange="updateType(${index}, this.value)">
+                <option value="standard" ${!isInverse ? 'selected' : ''}>Standard (Reduce when CAPE is high)</option>
+                <option value="inverse" ${isInverse ? 'selected' : ''}>Safe Haven (Increase when CAPE is high)</option>
+              </select>
+            </div>
+            <div class="grid-3">
+              <div class="input-group" style="margin-bottom:0;">
+                <label>10-Yr P/E</label>
+                <input type="number" class="tap-box" id="medPe_${index}" value="${asset.medPe}" inputmode="decimal">
+              </div>
+              <div class="input-group" style="margin-bottom:0;">
+                <label>Current P/E</label>
+                <input type="number" class="tap-box" id="currPe_${index}" value="${asset.currentVal || ''}" placeholder="${asset.medPe}" inputmode="decimal">
+              </div>
+              <div class="adjusted-output">
+                <label>Allocated</label>
+                <div class="adjusted-badge" id="adj_${index}">0.0%</div>
+                <div class="adjusted-dol" id="adj_dol_${index}">$0.00</div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    portfolio.forEach((asset, index) => {
+       const medPeInput = document.getElementById(`medPe_${index}`);
+       const currPeInput = document.getElementById(`currPe_${index}`);
+       
+       if (medPeInput) {
+           medPeInput.addEventListener('input', (e) => {
+               portfolio[index].medPe = e.target.value;
+               saveAndCalculate();
+           });
+       }
+       if (currPeInput) {
+           currPeInput.addEventListener('input', (e) => {
+               portfolio[index].currentVal = e.target.value;
+               saveAndCalculate();
+           });
+       }
+    });
+
+    saveAndCalculate();
+  }
+
+  function addAsset() {
+    const name = document.getElementById('newName').value;
+    const type = document.getElementById('newType').value;
+    const base = parseFloat(document.getElementById('newBase').value);
+    const medPe = parseFloat(document.getElementById('newMedPe').value);
+    const euphoria = parseFloat(document.getElementById('newEuphoria').value);
+    const pessimism = parseFloat(document.getElementById('newPessimism').value);
+
+    if(!name || isNaN(base) || isNaN(medPe) || isNaN(euphoria) || isNaN(pessimism)) {
+      alert('Please fill out all asset fields.');
+      return;
+    }
+
+    portfolio.push({ name, type, base, medPe, euphoria, pessimism, currentVal: '' });
+    
+    document.getElementById('newName').value = '';
+    document.getElementById('newType').value = 'standard';
+    document.getElementById('newBase').value = '';
+    document.getElementById('newMedPe').value = '';
+    document.getElementById('newEuphoria').value = '';
+    document.getElementById('newPessimism').value = '';
+    
+    renderAssets();
+  }
+
+  function removeAsset(index) {
+    portfolio.splice(index, 1);
+    renderAssets();
+  }
+
+  init();
+</script>
+</body>
+</html>
